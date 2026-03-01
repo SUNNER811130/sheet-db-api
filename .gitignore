@@ -6,4 +6,3 @@ node_modules
 
 # if you ever place secrets inside the repo
 secrets/
-*.json
