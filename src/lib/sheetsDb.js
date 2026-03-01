@@ -27,10 +27,18 @@ class SheetsDb {
     this.membersTab = membersTab;
     this._sheets = null;
 
+    // members cache
     this._headerCache = null;
     this._headerAt = 0;
     this._uidMapCache = null;
     this._uidMapAt = 0;
+
+    // generic uid-table caches: { [sheetName]: { header, idx } }
+    this._tableHeaderCache = {};
+    this._tableHeaderAt = {};
+    // { [sheetName]: { map, headerLen } }
+    this._tableUidMapCache = {};
+    this._tableUidMapAt = {};
   }
 
   static fromEnv() {
@@ -46,6 +54,9 @@ class SheetsDb {
     return this._sheets;
   }
 
+  // -----------------------------
+  // Members (existing behavior)
+  // -----------------------------
   async getHeader({ ttlMs = 5 * 60 * 1000 } = {}) {
     const now = Date.now();
     if (this._headerCache && now - this._headerAt < ttlMs) return this._headerCache;
@@ -57,7 +68,7 @@ class SheetsDb {
       range,
     });
 
-    const header = (res.data.values && res.data.values[0]) ? res.data.values[0] : [];
+    const header = res.data.values?.[0] || [];
     if (!header.length) throw new Error(`Members sheet has no header row: ${this.membersTab}`);
 
     const idx = {};
@@ -87,7 +98,7 @@ class SheetsDb {
       majorDimension: "COLUMNS",
     });
 
-    const colValues = (res.data.values && res.data.values[0]) ? res.data.values[0] : [];
+    const colValues = res.data.values?.[0] || [];
     const map = {};
     colValues.forEach((v, i) => {
       const uid = String(v || "").trim();
@@ -115,7 +126,7 @@ class SheetsDb {
       range,
     });
 
-    const row = (res.data.values && res.data.values[0]) ? res.data.values[0] : [];
+    const row = res.data.values?.[0] || [];
     const { header } = await this.getHeader();
 
     const obj = {};
@@ -171,6 +182,166 @@ class SheetsDb {
 
     this._uidMapCache = null;
     return { ...merged, _op: "update" };
+  }
+
+  // -----------------------------
+  // Generic UID table ops
+  // For sheets with header "UID" (uppercase) by default
+  // -----------------------------
+  async getTableHeader(sheetName, { ttlMs = 5 * 60 * 1000 } = {}) {
+    const now = Date.now();
+    const cached = this._tableHeaderCache[sheetName];
+    const at = this._tableHeaderAt[sheetName] || 0;
+    if (cached && now - at < ttlMs) return cached;
+
+    const sheets = await this.sheets();
+    const range = `${sheetName}!1:1`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+    });
+
+    const header = res.data.values?.[0] || [];
+    if (!header.length) throw new Error(`Sheet has no header row: ${sheetName}`);
+
+    const idx = {};
+    header.forEach((h, i) => (idx[String(h).trim()] = i));
+
+    const payload = { header, idx };
+    this._tableHeaderCache[sheetName] = payload;
+    this._tableHeaderAt[sheetName] = now;
+    return payload;
+  }
+
+  async getTableUidRowMap(sheetName, { uidHeader = "UID", ttlMs = 10 * 1000 } = {}) {
+    const now = Date.now();
+    const cached = this._tableUidMapCache[sheetName];
+    const at = this._tableUidMapAt[sheetName] || 0;
+    if (cached && now - at < ttlMs) return cached;
+
+    const { header, idx } = await this.getTableHeader(sheetName);
+    const uidCol0 = idx[uidHeader];
+    if (uidCol0 == null) throw new Error(`Header missing "${uidHeader}" in ${sheetName}`);
+
+    const uidCol1 = uidCol0 + 1;
+    const colLetter = colToLetter(uidCol1);
+
+    const sheets = await this.sheets();
+    const range = `${sheetName}!${colLetter}2:${colLetter}`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+      majorDimension: "COLUMNS",
+    });
+
+    const colValues = res.data.values?.[0] || [];
+    const map = {};
+    colValues.forEach((v, i) => {
+      const uid = String(v || "").trim();
+      if (uid) map[uid] = i + 2;
+    });
+
+    const payload = { map, headerLen: header.length };
+    this._tableUidMapCache[sheetName] = payload;
+    this._tableUidMapAt[sheetName] = now;
+    return payload;
+  }
+
+  async getByUid({ sheetName, uid, uidHeader = "UID" }) {
+    const u = String(uid || "").trim();
+    if (!u) return null;
+
+    const { map, headerLen } = await this.getTableUidRowMap(sheetName, { uidHeader });
+    const rowNum = map[u];
+    if (!rowNum) return null;
+
+    const sheets = await this.sheets();
+    const endCol = colToLetter(headerLen);
+    const range = `${sheetName}!A${rowNum}:${endCol}${rowNum}`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range,
+    });
+
+    const row = res.data.values?.[0] || [];
+    const { header } = await this.getTableHeader(sheetName);
+
+    const obj = {};
+    header.forEach((h, i) => {
+      obj[String(h).trim()] = row[i] ?? "";
+    });
+    return obj;
+  }
+
+  async upsertByUid({ sheetName, uid, valuesByHeader, uidHeader = "UID" }) {
+    const u = String(uid || "").trim();
+    if (!u) throw new Error("uid is required");
+
+    const { header } = await this.getTableHeader(sheetName);
+    const headerLen = header.length;
+    const endCol = colToLetter(headerLen);
+
+    const { map } = await this.getTableUidRowMap(sheetName, { uidHeader });
+    const rowNum = map[u];
+
+    // Existing row (for merge)
+    const existing = rowNum ? await this.getByUid({ sheetName, uid: u, uidHeader }) : null;
+
+    // Ensure UID column is always set
+    const merged = { ...(existing || {}), ...(valuesByHeader || {}) };
+    merged[uidHeader] = u;
+
+    const rowValues = header.map((h) => merged[String(h).trim()] ?? "");
+
+    const sheets = await this.sheets();
+
+    if (!rowNum) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: this.spreadsheetId,
+        range: `${sheetName}!A:${endCol}`,
+        valueInputOption: "RAW",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: { values: [rowValues] },
+      });
+
+      // invalidate uid map for that sheet
+      delete this._tableUidMapCache[sheetName];
+      return { ...merged, _op: "insert" };
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A${rowNum}:${endCol}${rowNum}`,
+      valueInputOption: "RAW",
+      requestBody: { values: [rowValues] },
+    });
+
+    delete this._tableUidMapCache[sheetName];
+    return { ...merged, _op: "update" };
+  }
+
+  // -----------------------------
+  // Optional: events logging
+  // Sheet columns expected: ts, source, action, payload_json
+  // -----------------------------
+  async appendEvent({ ts, source, action, payload, sheetName = "events" }) {
+    const sheets = await this.sheets();
+
+    // We don't require strict header alignment here; append as 4 cells.
+    const row = [
+      ts || nowISO(),
+      String(source || ""),
+      String(action || ""),
+      JSON.stringify(payload ?? {}),
+    ];
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A:D`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [row] },
+    });
   }
 }
 
