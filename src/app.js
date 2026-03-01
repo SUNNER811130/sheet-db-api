@@ -1,25 +1,21 @@
+// src/app.js
 const express = require("express");
 const { createMembersRouter } = require("./routes/members");
-
-function apiKeyGuard(req, res, next) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return next(); // not enabled
-
-  const got = req.header("x-api-key");
-  if (got !== apiKey) {
-    return res.status(401).json({ ok: false, error: "UNAUTHORIZED" });
-  }
-  next();
-}
+const { createLineRouter } = require("./routes/line");
 
 function createApp({ db }) {
   const app = express();
-  app.use(express.json({ limit: "1mb" }));
+
+  // 保留 raw body 供 LINE 驗簽
+  app.use(express.json({
+    limit: "1mb",
+    verify: (req, _res, buf) => { req.rawBody = buf; }
+  }));
 
   app.get("/health", (req, res) => res.json({ ok: true }));
 
-  // ✅ only protect /members (keep /health public)
-  app.use("/members", apiKeyGuard, createMembersRouter({ db }));
+  app.use("/members", createMembersRouter({ db }));
+  app.use("/line", createLineRouter({ db }));
 
   return app;
 }
