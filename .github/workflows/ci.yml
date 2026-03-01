@@ -9,10 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+
       - run: npm ci
-      - run: node -v
-      - run: npm run start --if-present
+
+      # 只做語法檢查，不啟動 server
+      - run: node -c src/server.js
+      - run: node -c src/app.js
+      - run: node -c src/lib/sheetsDb.js
+      - run: node -c src/routes/members.js
