@@ -1,18 +1,31 @@
-const { GoogleAuth } = require("google-auth-library");
+// src/lib/googleAuth.js
+const { google } = require("googleapis");
 
-const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+/**
+ * ✅ Scheme A (ADC / Application Default Credentials)
+ *
+ * - Local: uses GOOGLE_APPLICATION_CREDENTIALS if set (points to a SA JSON key)
+ * - Cloud Run: uses the Cloud Run runtime Service Account automatically
+ */
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
-function getGoogleAuth() {
-  // Railway：用 base64 JSON
-  const b64 = process.env.GOOGLE_SA_JSON_B64;
-  if (b64) {
-    const jsonStr = Buffer.from(b64, "base64").toString("utf8");
-    const credentials = JSON.parse(jsonStr);
-    return new GoogleAuth({ credentials, scopes: [SHEETS_SCOPE] });
-  }
+let _authClient = null;
+let _sheetsClient = null;
 
-  // Local：讀 GOOGLE_APPLICATION_CREDENTIALS（你已設）
-  return new GoogleAuth({ scopes: [SHEETS_SCOPE] });
+async function getAuthClient() {
+  if (_authClient) return _authClient;
+
+  const auth = new google.auth.GoogleAuth({ scopes: SCOPES });
+  _authClient = await auth.getClient();
+  return _authClient;
 }
 
-module.exports = { getGoogleAuth };
+async function getSheetsClient() {
+  if (_sheetsClient) return _sheetsClient;
+
+  const authClient = await getAuthClient();
+  _sheetsClient = google.sheets({ version: "v4", auth: authClient });
+  return _sheetsClient;
+}
+
+module.exports = { getAuthClient, getSheetsClient };

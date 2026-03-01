@@ -1,5 +1,4 @@
-const { google } = require("googleapis");
-const { getGoogleAuth } = require("./googleAuth");
+const { getSheetsClient } = require("./googleAuth");
 
 function mustEnv(name) {
   const v = process.env[name];
@@ -43,8 +42,7 @@ class SheetsDb {
 
   async sheets() {
     if (this._sheets) return this._sheets;
-    const auth = getGoogleAuth();
-    this._sheets = google.sheets({ version: "v4", auth });
+    this._sheets = await getSheetsClient();
     return this._sheets;
   }
 
