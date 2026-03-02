@@ -243,7 +243,7 @@ function createLineRouter({ db }) {
           }
         }
 
-        await db.upsertMember({ uid: userId, display_name: displayName });
+        const upsertPayload = { uid: userId, display_name: displayName };
 
         if (type === "follow") {
           await handleLineReply({
@@ -286,6 +286,12 @@ function createLineRouter({ db }) {
             const seven = calculateSevenNumbers(birthday.birthday);
             const flow = computeFlowNumFromBirthday(birthday.birthday);
 
+            await db.upsertMember({
+              ...upsertPayload,
+              birthday: birthday.birthday,
+              flow,
+            });
+
             await tryAppendEvent(db, {
               action: "line_birthday_calc_ok",
               payload: {
@@ -318,6 +324,8 @@ function createLineRouter({ db }) {
             continue;
           }
 
+          await db.upsertMember(upsertPayload);
+
           if (!shouldReplyToMessageKeyword(messageText)) continue;
 
           await handleLineReply({
@@ -328,7 +336,10 @@ function createLineRouter({ db }) {
             text: "任務選單：1. 輸入生日（YYYY-MM-DD）",
             payload: { userId, keyword: messageText.trim() },
           });
+          continue;
         }
+
+        await db.upsertMember(upsertPayload);
       }
 
       return res.status(200).send("OK");

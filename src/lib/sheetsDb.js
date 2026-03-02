@@ -22,9 +22,11 @@ function nowISO() {
 }
 
 class SheetsDb {
-  constructor({ spreadsheetId, membersTab }) {
+  constructor({ spreadsheetId, membersTab, memberRosterSheet, dualWriteMembers = false }) {
     this.spreadsheetId = spreadsheetId;
     this.membersTab = membersTab;
+    this.memberRosterSheet = memberRosterSheet;
+    this.dualWriteMembers = Boolean(dualWriteMembers);
     this._sheets = null;
 
     // members cache
@@ -42,9 +44,12 @@ class SheetsDb {
   }
 
   static fromEnv() {
+    const dualWriteMembers = String(process.env.DUAL_WRITE_MEMBERS || "off").toLowerCase() === "on";
     return new SheetsDb({
       spreadsheetId: mustEnv("SPREADSHEET_ID"),
       membersTab: mustEnv("SHEETS_MEMBERS_TAB"),
+      memberRosterSheet: process.env.MEMBER_ROSTER_SHEET || "會員清單",
+      dualWriteMembers,
     });
   }
 
@@ -137,6 +142,93 @@ class SheetsDb {
   }
 
   async upsertMember(input) {
+    return this.upsertMemberToRoster(input);
+  }
+
+  async upsertMemberToRoster(input) {
+    const uid = String(input?.uid || "").trim();
+    if (!uid) throw new Error("uid is required");
+
+    const rosterSheet = this.memberRosterSheet || "會員清單";
+    const sheets = await this.sheets();
+    const uidColRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${rosterSheet}!B2:B`,
+      majorDimension: "COLUMNS",
+    });
+    const uidCol = uidColRes.data.values?.[0] || [];
+    let rowNum = null;
+    uidCol.forEach((v, i) => {
+      if (rowNum) return;
+      if (String(v || "").trim() === uid) rowNum = i + 2;
+    });
+
+    let existingRow = [];
+    if (rowNum) {
+      const rowRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${rosterSheet}!A${rowNum}:S${rowNum}`,
+      });
+      existingRow = rowRes.data.values?.[0] || [];
+    }
+
+    const existing = {
+      expire_at: existingRow[0] ?? "",
+      uid: existingRow[1] ?? "",
+      display_name: existingRow[2] ?? "",
+      level: existingRow[3] ?? "",
+      birthday: existingRow[4] ?? "",
+      flow: existingRow[7] ?? "",
+      created_at: existingRow[17] ?? "",
+      updated_at: existingRow[18] ?? "",
+    };
+
+    const merged = {
+      uid,
+      display_name: input?.display_name ?? existing?.display_name ?? "",
+      level: input?.level ?? existing?.level ?? "free",
+      expire_at: input?.expire_at ?? existing?.expire_at ?? "",
+      birthday: input?.birthday ?? existing?.birthday ?? "",
+      flow: input?.flow ?? existing?.flow ?? "",
+      created_at: existing?.created_at || nowISO(),
+      updated_at: nowISO(),
+    };
+
+    const rowValues = Array.from({ length: 19 }, (_, i) => existingRow[i] ?? "");
+    rowValues[0] = merged.expire_at; // A
+    rowValues[1] = merged.uid; // B
+    rowValues[2] = merged.display_name; // C
+    rowValues[3] = merged.level; // D
+    rowValues[4] = merged.birthday; // E
+    rowValues[7] = merged.flow; // H
+    rowValues[17] = merged.created_at; // R
+    rowValues[18] = merged.updated_at; // S
+
+    if (!rowNum) {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId: this.spreadsheetId,
+        range: `${rosterSheet}!A:S`,
+        valueInputOption: "RAW",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: { values: [rowValues] },
+      });
+    } else {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${rosterSheet}!A${rowNum}:S${rowNum}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [rowValues] },
+      });
+    }
+
+    if (this.dualWriteMembers) {
+      await this.upsertMemberLegacy(input);
+    }
+
+    return { ...merged, _op: rowNum ? "update" : "insert" };
+  }
+
+  async upsertMemberLegacy(input) {
     const uid = String(input?.uid || "").trim();
     if (!uid) throw new Error("uid is required");
 

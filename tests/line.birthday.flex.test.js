@@ -76,6 +76,15 @@ describe("LINE birthday flex flow", () => {
         expect.objectContaining({ action: "line_reply_ok" }),
       ])
     );
+
+    expect(db.upsertMember).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: "U_BIRTHDAY_1",
+        display_name: "Mock User",
+        birthday: "1990-11-30",
+        flow: expect.any(Number),
+      })
+    );
   });
 
   test("LINE_REPLY_MODE=off: does not call reply endpoint and writes line_reply_skipped", async () => {
@@ -124,6 +133,15 @@ describe("LINE birthday flex flow", () => {
           payload: expect.objectContaining({ reason: "reply_mode_off" }),
         }),
       ])
+    );
+
+    expect(db.upsertMember).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uid: "U_BIRTHDAY_2",
+        display_name: "Mock User",
+        birthday: "1990-11-30",
+        flow: expect.any(Number),
+      })
     );
   });
 });
