@@ -13,7 +13,7 @@ function safeEqual(a, b) {
 function verifyLineSignature({ channelSecret, rawBody, signature }) {
   const computed = crypto
     .createHmac("sha256", channelSecret)
-    .update(rawBody) // 必須用 raw bytes
+    .update(rawBody)
     .digest("base64");
   return safeEqual(signature, computed);
 }
@@ -43,10 +43,9 @@ async function getLineProfile({ token, userId }) {
   }
 }
 
-// 可選：回覆訊息（預設不使用，避免卡時間）
 async function replyLine({ token, replyToken, text }) {
   if (!replyToken) return;
-  await fetchWithTimeout(
+  const r = await fetchWithTimeout(
     "https://api.line.me/v2/bot/message/reply",
     {
       method: "POST",
@@ -60,16 +59,21 @@ async function replyLine({ token, replyToken, text }) {
       }),
     },
     900
-  ).catch(() => {});
+  );
+
+  if (!r?.ok) {
+    const e = new Error("reply_api_non_2xx");
+    e.status = r?.status || 0;
+    throw e;
+  }
 }
 
 function safeStr(v, maxLen = 500) {
   const s = String(v ?? "");
-  return s.length > maxLen ? s.slice(0, maxLen) + "…" : s;
+  return s.length > maxLen ? `${s.slice(0, maxLen)}...` : s;
 }
 
 function pickLineEventPayload(ev) {
-  // 只挑必要欄位，避免 events tab 爆肥
   const type = String(ev?.type || "");
   const userId = ev?.source?.userId || "";
   const timestamp = ev?.timestamp || "";
@@ -109,6 +113,55 @@ async function tryAppendEvent(db, { action, payload }) {
   }
 }
 
+function isReplyModeOn() {
+  return String(process.env.LINE_REPLY_MODE || "off").toLowerCase() === "on";
+}
+
+function shouldReplyToMessageKeyword(text) {
+  const t = String(text || "").trim().toLowerCase();
+  return ["menu", "任務選單", "help"].includes(t);
+}
+
+async function handleLineReply({ db, accessToken, eventType, replyToken, text, payload }) {
+  if (!replyToken) {
+    return;
+  }
+
+  if (!isReplyModeOn()) {
+    await tryAppendEvent(db, {
+      action: "line_reply_skipped",
+      payload: { reason: "reply_mode_off", eventType, ...payload },
+    });
+    return;
+  }
+
+  if (!accessToken) {
+    await tryAppendEvent(db, {
+      action: "line_reply_error",
+      payload: { reason: "missing_access_token", eventType, ...payload },
+    });
+    return;
+  }
+
+  try {
+    await replyLine({ token: accessToken, replyToken, text });
+    await tryAppendEvent(db, {
+      action: "line_reply_ok",
+      payload: { eventType, ...payload },
+    });
+  } catch (err) {
+    await tryAppendEvent(db, {
+      action: "line_reply_error",
+      payload: {
+        reason: safeStr(err?.message || "reply_failed", 200),
+        status: Number(err?.status || 0),
+        eventType,
+        ...payload,
+      },
+    });
+  }
+}
+
 // -------------------- router --------------------
 function createLineRouter({ db }) {
   const router = express.Router();
@@ -119,7 +172,6 @@ function createLineRouter({ db }) {
     const signature = req.get("x-line-signature") || "";
     const rawBody = req.rawBody || Buffer.from("");
 
-    // basic guard
     if (!channelSecret || !signature || !rawBody.length) {
       await tryAppendEvent(db, {
         action: "line_event_error",
@@ -133,7 +185,6 @@ function createLineRouter({ db }) {
       return res.status(401).send("Missing signature prerequisites");
     }
 
-    // signature verify
     if (!verifyLineSignature({ channelSecret, rawBody, signature })) {
       await tryAppendEvent(db, {
         action: "line_event_error",
@@ -144,7 +195,6 @@ function createLineRouter({ db }) {
 
     const events = Array.isArray(req.body?.events) ? req.body.events : [];
 
-    // 盡量在 2 秒內處理完再回 200（LINE guideline）
     try {
       for (const ev of events) {
         const userId = ev?.source?.userId;
@@ -153,13 +203,11 @@ function createLineRouter({ db }) {
         const type = String(ev?.type || "");
         if (!["follow", "message", "postback", "join"].includes(type)) continue;
 
-        // 先記錄收到事件（可觀測性）
         await tryAppendEvent(db, {
           action: "line_event",
           payload: pickLineEventPayload(ev),
         });
 
-        // 取 displayName（可失敗，不影響主流程）
         let displayName = "";
         if (accessToken) {
           const prof = await getLineProfile({ token: accessToken, userId });
@@ -177,17 +225,32 @@ function createLineRouter({ db }) {
           }
         }
 
-        // 寫入 members
         await db.upsertMember({ uid: userId, display_name: displayName });
 
-        // ✅ 可選：只在 follow 回覆（若你想要）
-        // if (type === "follow" && accessToken) {
-        //   await replyLine({
-        //     token: accessToken,
-        //     replyToken: ev.replyToken,
-        //     text: "歡迎加入！已建立會員資料 ✅",
-        //   });
-        // }
+        if (type === "follow") {
+          await handleLineReply({
+            db,
+            accessToken,
+            eventType: "follow",
+            replyToken: ev.replyToken,
+            text: "歡迎加入～輸入 menu 看功能",
+            payload: { userId },
+          });
+        }
+
+        if (type === "message" && ev?.message?.type === "text") {
+          const messageText = String(ev?.message?.text || "");
+          if (!shouldReplyToMessageKeyword(messageText)) continue;
+
+          await handleLineReply({
+            db,
+            accessToken,
+            eventType: "message",
+            replyToken: ev.replyToken,
+            text: "功能選單：輸入 1 開始任務",
+            payload: { userId, keyword: messageText.trim() },
+          });
+        }
       }
 
       return res.status(200).send("OK");
@@ -202,7 +265,6 @@ function createLineRouter({ db }) {
         },
       });
 
-      // 先回 200 避免 LINE 反覆重送把你打爆；之後你再加 Cloud Tasks 重試機制
       return res.status(200).send("OK");
     }
   });
