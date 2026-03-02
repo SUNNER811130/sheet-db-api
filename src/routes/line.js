@@ -1,6 +1,12 @@
 // src/routes/line.js
 const express = require("express");
 const crypto = require("crypto");
+const {
+  parseBirthdayInput,
+  calculateSevenNumbers,
+  computeFlowNumFromBirthday,
+} = require("../lib/talentCalc");
+const { createPersonalAnalysisFlex } = require("../lib/flex/personalAnalysisFlex");
 
 // -------------------- helpers --------------------
 function safeEqual(a, b) {
@@ -43,8 +49,14 @@ async function getLineProfile({ token, userId }) {
   }
 }
 
-async function replyLine({ token, replyToken, text }) {
+async function replyLine({ token, replyToken, text, messages }) {
   if (!replyToken) return;
+
+  const outMessages =
+    Array.isArray(messages) && messages.length
+      ? messages
+      : [{ type: "text", text: String(text || "") }];
+
   const r = await fetchWithTimeout(
     "https://api.line.me/v2/bot/message/reply",
     {
@@ -55,7 +67,7 @@ async function replyLine({ token, replyToken, text }) {
       },
       body: JSON.stringify({
         replyToken,
-        messages: [{ type: "text", text }],
+        messages: outMessages,
       }),
     },
     900
@@ -122,10 +134,16 @@ function shouldReplyToMessageKeyword(text) {
   return ["menu", "任務選單", "help"].includes(t);
 }
 
-async function handleLineReply({ db, accessToken, eventType, replyToken, text, payload }) {
-  if (!replyToken) {
-    return;
-  }
+async function handleLineReply({
+  db,
+  accessToken,
+  eventType,
+  replyToken,
+  text,
+  messages,
+  payload,
+}) {
+  if (!replyToken) return;
 
   if (!isReplyModeOn()) {
     await tryAppendEvent(db, {
@@ -144,7 +162,7 @@ async function handleLineReply({ db, accessToken, eventType, replyToken, text, p
   }
 
   try {
-    await replyLine({ token: accessToken, replyToken, text });
+    await replyLine({ token: accessToken, replyToken, text, messages });
     await tryAppendEvent(db, {
       action: "line_reply_ok",
       payload: { eventType, ...payload },
@@ -233,13 +251,73 @@ function createLineRouter({ db }) {
             accessToken,
             eventType: "follow",
             replyToken: ev.replyToken,
-            text: "歡迎加入～輸入 menu 看功能",
+            text: "歡迎加入，輸入 menu 看功能",
             payload: { userId },
           });
         }
 
         if (type === "message" && ev?.message?.type === "text") {
           const messageText = String(ev?.message?.text || "");
+          const birthday = parseBirthdayInput(messageText);
+
+          // Birthday processing has higher priority than menu/help keywords.
+          if (birthday.matched && !birthday.ok) {
+            await tryAppendEvent(db, {
+              action: "line_birthday_invalid",
+              payload: {
+                userId,
+                input: messageText.trim(),
+                reason: birthday.reason || "invalid_date",
+              },
+            });
+
+            await handleLineReply({
+              db,
+              accessToken,
+              eventType: "birthday_invalid",
+              replyToken: ev.replyToken,
+              text: "生日格式請用 YYYY-MM-DD，並確認日期合法",
+              payload: { userId, input: messageText.trim() },
+            });
+            continue;
+          }
+
+          if (birthday.ok) {
+            const seven = calculateSevenNumbers(birthday.birthday);
+            const flow = computeFlowNumFromBirthday(birthday.birthday);
+
+            await tryAppendEvent(db, {
+              action: "line_birthday_calc_ok",
+              payload: {
+                birthday: birthday.birthday,
+                n7: seven.n7,
+                n1: seven.n1,
+                n4: seven.n4,
+                flow,
+              },
+            });
+
+            const flexMessage = createPersonalAnalysisFlex({
+              displayName: displayName || userId,
+              birthday: birthday.birthday,
+              n7: seven.n7,
+              n1: seven.n1,
+              n4: seven.n4,
+              flow,
+              retestMessage: "重新輸入生日",
+            });
+
+            await handleLineReply({
+              db,
+              accessToken,
+              eventType: "birthday_calc",
+              replyToken: ev.replyToken,
+              messages: [flexMessage],
+              payload: { userId, birthday: birthday.birthday, n7: seven.n7, n1: seven.n1, n4: seven.n4, flow },
+            });
+            continue;
+          }
+
           if (!shouldReplyToMessageKeyword(messageText)) continue;
 
           await handleLineReply({
@@ -247,7 +325,7 @@ function createLineRouter({ db }) {
             accessToken,
             eventType: "message",
             replyToken: ev.replyToken,
-            text: "功能選單：輸入 1 開始任務",
+            text: "任務選單：1. 輸入生日（YYYY-MM-DD）",
             payload: { userId, keyword: messageText.trim() },
           });
         }
