@@ -1,7 +1,20 @@
 const express = require("express");
 
+function requireApiKeyIfConfigured(req, res, next) {
+  const expected = process.env.API_KEY;
+  if (!expected) return next();
+  const got = req.headers["x-api-key"];
+  if (!got || got !== expected) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  return next();
+}
+
 function createMembersRouter({ db }) {
   const router = express.Router();
+
+  // If API_KEY is configured, protect /members endpoints
+  router.use(requireApiKeyIfConfigured);
 
   router.post("/upsert", async (req, res) => {
     try {

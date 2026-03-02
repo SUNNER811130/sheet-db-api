@@ -21,6 +21,51 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+function pickFirst(obj, keys, fallback = "") {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s !== "") return v;
+  }
+  return fallback;
+}
+
+function normalizeMember(obj, source) {
+  if (!obj) return null;
+  const uid = String(pickFirst(obj, ["uid", "UID", "userId", "user_id"]) || "").trim();
+  if (!uid) return null;
+
+  const display_name = String(
+    pickFirst(obj, ["display_name", "displayName", "LINE名稱", "line_name"]) || ""
+  );
+  const level = String(pickFirst(obj, ["level", "會員等級", "membership_level"], "free") || "free");
+
+  const expire_at = String(
+    pickFirst(obj, ["expire_at", "權限到期時間", "到期日", "expireAt", "expires_at"]) || ""
+  );
+  const created_at = String(
+    pickFirst(obj, ["created_at", "created_at (ISO)", "createdAt", "建立時間"]) || ""
+  );
+  const updated_at = String(
+    pickFirst(obj, ["updated_at", "updated_at (ISO)", "updatedAt", "更新時間"]) || ""
+  );
+  const birthday = String(pickFirst(obj, ["birthday", "生日A", "生日", "生日B"]) || "");
+  const flow = pickFirst(obj, ["flow", "流年"], "");
+
+  return {
+    uid,
+    display_name,
+    level,
+    expire_at,
+    created_at,
+    updated_at,
+    birthday,
+    flow,
+    _source: source,
+  };
+}
+
 class SheetsDb {
   constructor({ spreadsheetId, membersTab, memberRosterSheet, dualWriteMembers = false }) {
     this.spreadsheetId = spreadsheetId;
@@ -47,7 +92,7 @@ class SheetsDb {
     const dualWriteMembers = String(process.env.DUAL_WRITE_MEMBERS || "off").toLowerCase() === "on";
     return new SheetsDb({
       spreadsheetId: mustEnv("SPREADSHEET_ID"),
-      membersTab: mustEnv("SHEETS_MEMBERS_TAB"),
+      membersTab: process.env.SHEETS_MEMBERS_TAB || "members",
       memberRosterSheet: process.env.MEMBER_ROSTER_SHEET || "會員清單",
       dualWriteMembers,
     });
@@ -60,7 +105,7 @@ class SheetsDb {
   }
 
   // -----------------------------
-  // Members (existing behavior)
+  // Members (legacy membersTab)
   // -----------------------------
   async getHeader({ ttlMs = 5 * 60 * 1000 } = {}) {
     const now = Date.now();
@@ -115,7 +160,7 @@ class SheetsDb {
     return this._uidMapCache;
   }
 
-  async getMember(uid) {
+  async getMemberLegacy(uid) {
     const u = String(uid || "").trim();
     if (!u) return null;
 
@@ -139,6 +184,65 @@ class SheetsDb {
       obj[String(h).trim()] = row[i] ?? "";
     });
     return obj;
+  }
+
+  async getMemberFromRoster(uid) {
+    const u = String(uid || "").trim();
+    if (!u) return null;
+
+    const sheetName = this.memberRosterSheet || "會員清單";
+
+    // Preferred path: use roster header map (uidHeader="uid") for cached lookups.
+    try {
+      const raw = await this.getByUid({ sheetName, uid: u, uidHeader: "uid" });
+      if (raw) return normalizeMember(raw, "roster");
+    } catch (_) {
+      // fall back to fixed-column scan below
+    }
+
+    // Fallback path: scan B col and read row A:S (fixed columns).
+    const sheets = await this.sheets();
+    const uidColRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!B2:B`,
+      majorDimension: "COLUMNS",
+    });
+    const uidCol = uidColRes.data.values?.[0] || [];
+    let rowNum = null;
+    uidCol.forEach((v, i) => {
+      if (rowNum) return;
+      if (String(v || "").trim() === u) rowNum = i + 2;
+    });
+    if (!rowNum) return null;
+
+    const rowRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${sheetName}!A${rowNum}:S${rowNum}`,
+    });
+    const row = rowRes.data.values?.[0] || [];
+
+    const obj = {
+      expire_at: row[0] ?? "",
+      uid: row[1] ?? "",
+      display_name: row[2] ?? "",
+      level: row[3] ?? "",
+      birthday: row[4] ?? "",
+      flow: row[7] ?? "",
+      created_at: row[17] ?? "",
+      updated_at: row[18] ?? "",
+    };
+    return normalizeMember(obj, "roster");
+  }
+
+  // Transition-safe read: roster first, fallback to legacy members tab
+  async getMember(uid) {
+    const roster = await this.getMemberFromRoster(uid);
+    if (roster) return roster;
+
+    const legacyRaw = await this.getMemberLegacy(uid);
+    if (!legacyRaw) return null;
+
+    return normalizeMember(legacyRaw, "members");
   }
 
   async upsertMember(input) {
@@ -194,6 +298,7 @@ class SheetsDb {
       updated_at: nowISO(),
     };
 
+    // roster A:S has 19 columns (A..S)
     const rowValues = Array.from({ length: 19 }, (_, i) => existingRow[i] ?? "");
     rowValues[0] = merged.expire_at; // A
     rowValues[1] = merged.uid; // B
@@ -221,6 +326,10 @@ class SheetsDb {
       });
     }
 
+    // Invalidate roster uid-map cache (roster reads use getByUid -> uid map)
+    delete this._tableUidMapCache[rosterSheet];
+    delete this._tableUidMapAt[rosterSheet];
+
     if (this.dualWriteMembers) {
       await this.upsertMemberLegacy(input);
     }
@@ -239,7 +348,7 @@ class SheetsDb {
     const { map } = await this.getUidRowMap();
     const rowNum = map[uid];
 
-    const existing = rowNum ? await this.getMember(uid) : null;
+    const existing = rowNum ? await this.getMemberLegacy(uid) : null;
 
     const merged = {
       uid,
@@ -420,12 +529,7 @@ class SheetsDb {
     const sheets = await this.sheets();
 
     // We don't require strict header alignment here; append as 4 cells.
-    const row = [
-      ts || nowISO(),
-      String(source || ""),
-      String(action || ""),
-      JSON.stringify(payload ?? {}),
-    ];
+    const row = [ts || nowISO(), String(source || ""), String(action || ""), JSON.stringify(payload ?? {})];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
