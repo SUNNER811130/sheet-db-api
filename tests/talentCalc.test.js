@@ -44,9 +44,11 @@ describe("talentCalc", () => {
     }
 
     const unionCodes = calculateUnionCodes16Map(sixteen);
-    for (let i = 1; i <= 12; i += 1) {
-      expect(unionCodes[`u${i}`]).toEqual(expect.any(String));
-    }
+    expect(Array.isArray(unionCodes)).toBe(true);
+    expect(unionCodes).toHaveLength(12);
+    unionCodes.forEach((code) => {
+      expect(code).toEqual(expect.any(String));
+    });
   });
 
   test("computeFlowNumFromBirthday returns a number for this year", () => {
