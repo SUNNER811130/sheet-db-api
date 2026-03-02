@@ -135,4 +135,123 @@ describe("LINE webhook", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch.mock.calls[0][0]).toContain("/v2/bot/profile/U_VALID_1");
   });
+
+  test("profile fetch failure (throw or ok:false) should not crash, writes line_event_error, and still upserts member with empty display_name", async () => {
+    process.env.LINE_CHANNEL_ACCESS_TOKEN = "test-access-token";
+
+    const cases = [
+      {
+        fetchResult: Promise.reject(new Error("network down")),
+        expectedStatus: 0,
+      },
+      {
+        fetchResult: Promise.resolve({
+          ok: false,
+          status: 503,
+          json: async () => ({}),
+        }),
+        expectedStatus: 503,
+      },
+    ];
+
+    for (const c of cases) {
+      const db = {
+        appendEvent: jest.fn().mockResolvedValue(undefined),
+        upsertMember: jest.fn().mockResolvedValue(undefined),
+      };
+      const app = createApp({ db });
+      global.fetch.mockReset();
+      global.fetch.mockImplementation(() => c.fetchResult);
+
+      const rawBody = JSON.stringify({
+        destination: "U_DEST",
+        events: [{ type: "follow", source: { userId: "U_PROFILE_FAIL" } }],
+      });
+      const signature = signRawBody(process.env.LINE_CHANNEL_SECRET, rawBody);
+
+      const res = await request(app)
+        .post("/line/webhook")
+        .set("x-line-signature", signature)
+        .set("content-type", "application/json")
+        .send(rawBody);
+
+      expect(res.status).toBe(200);
+      expect(res.text).toBe("OK");
+
+      const appendCalls = db.appendEvent.mock.calls.map((args) => args[0]);
+      expect(appendCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ action: "line_event" }),
+          expect.objectContaining({
+            action: "line_event_error",
+            payload: expect.objectContaining({
+              reason: "profile_fetch_failed",
+              userId: "U_PROFILE_FAIL",
+              status: c.expectedStatus,
+            }),
+          }),
+        ])
+      );
+      expect(appendCalls).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            action: "line_event_error",
+            payload: expect.objectContaining({ reason: "handler_exception" }),
+          }),
+        ])
+      );
+
+      expect(db.upsertMember).toHaveBeenCalledTimes(1);
+      expect(db.upsertMember).toHaveBeenCalledWith({
+        uid: "U_PROFILE_FAIL",
+        display_name: "",
+      });
+    }
+  });
+
+  test("when payload has multiple events, it writes one line_event per event and upserts each member", async () => {
+    const db = {
+      appendEvent: jest.fn().mockResolvedValue(undefined),
+      upsertMember: jest.fn().mockResolvedValue(undefined),
+    };
+    const app = createApp({ db });
+
+    const rawBody = JSON.stringify({
+      destination: "U_DEST",
+      events: [
+        { type: "follow", source: { userId: "U_MULTI_1" } },
+        {
+          type: "message",
+          source: { userId: "U_MULTI_2" },
+          message: { type: "text", text: "hello" },
+        },
+      ],
+    });
+    const signature = signRawBody(process.env.LINE_CHANNEL_SECRET, rawBody);
+
+    const res = await request(app)
+      .post("/line/webhook")
+      .set("x-line-signature", signature)
+      .set("content-type", "application/json")
+      .send(rawBody);
+
+    expect(res.status).toBe(200);
+    expect(res.text).toBe("OK");
+
+    expect(db.appendEvent).toHaveBeenCalledTimes(2);
+    const appendCalls = db.appendEvent.mock.calls.map((args) => args[0]);
+    expect(appendCalls[0]).toEqual(expect.objectContaining({ action: "line_event" }));
+    expect(appendCalls[1]).toEqual(expect.objectContaining({ action: "line_event" }));
+
+    expect(db.upsertMember).toHaveBeenCalledTimes(2);
+    expect(db.upsertMember).toHaveBeenNthCalledWith(1, {
+      uid: "U_MULTI_1",
+      display_name: "",
+    });
+    expect(db.upsertMember).toHaveBeenNthCalledWith(2, {
+      uid: "U_MULTI_2",
+      display_name: "",
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });

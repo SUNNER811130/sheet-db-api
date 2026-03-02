@@ -29,14 +29,18 @@ async function fetchWithTimeout(url, options, ms) {
 }
 
 async function getLineProfile({ token, userId }) {
-  const r = await fetchWithTimeout(
-    `https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-    900
-  );
-  if (!r.ok) return { displayName: "" };
-  const j = await r.json().catch(() => ({}));
-  return { displayName: j.displayName || "" };
+  try {
+    const r = await fetchWithTimeout(
+      `https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      900
+    );
+    if (!r.ok) return { displayName: "", ok: false, status: r.status || 0 };
+    const j = await r.json().catch(() => ({}));
+    return { displayName: j.displayName || "", ok: true };
+  } catch (err) {
+    return { displayName: "", ok: false, status: 0, error: err };
+  }
 }
 
 // 可選：回覆訊息（預設不使用，避免卡時間）
@@ -160,6 +164,17 @@ function createLineRouter({ db }) {
         if (accessToken) {
           const prof = await getLineProfile({ token: accessToken, userId });
           displayName = prof.displayName || "";
+          if (prof.ok === false) {
+            await tryAppendEvent(db, {
+              action: "line_event_error",
+              payload: {
+                reason: "profile_fetch_failed",
+                userId,
+                status: prof.status || 0,
+                message: safeStr(prof.error?.message || "", 300),
+              },
+            });
+          }
         }
 
         // 寫入 members
