@@ -192,7 +192,11 @@ function createQuizRouter({ db }) {
       });
     } catch (err) {
       console.error("POST /quiz/calc failed:", err);
-      return res.status(500).json({ ok: false, error: "internal_error" });
+      return res.status(500).json({ 
+        ok: false, 
+        error: "internal_error",
+        message: err?.message || String(err),
+     });
     }
   });
 
