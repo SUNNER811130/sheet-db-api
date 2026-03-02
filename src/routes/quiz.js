@@ -1,17 +1,7 @@
-// src/routes/quiz.js
 const express = require("express");
-
-/**
- * Expected db interface (minimum):
- *   db.upsertByUid({ sheetName, uid, valuesByHeader }) -> Promise<void>
- *   db.getByUid({ sheetName, uid }) -> Promise<object|null>
- *
- * Optional:
- *   db.appendEvent({ ts, source, action, payload }) -> Promise<void>
- */
-
 const SHEET_CALC = "運算紀錄表";
 const SHEET_UNION = "聯合碼紀錄表";
+const EVENTS_SHEET = "events";
 
 // -------------------- auth --------------------
 function requireApiKey(req, res, next) {
@@ -24,6 +14,21 @@ function requireApiKey(req, res, next) {
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
   next();
+}
+
+// -------------------- utils --------------------
+function safeStr(v, maxLen = 500) {
+  const s = String(v ?? "");
+  return s.length > maxLen ? s.slice(0, maxLen) + "…" : s;
+}
+
+function getRequestMeta(req) {
+  return {
+    requestId:
+      safeStr(req.headers["x-request-id"] || req.headers["x-cloud-trace-context"] || ""),
+    ip: safeStr(req.headers["x-forwarded-for"] || req.ip || ""),
+    userAgent: safeStr(req.headers["user-agent"] || ""),
+  };
 }
 
 // -------------------- validators --------------------
@@ -56,7 +61,6 @@ function compressNumber(num) {
 
 function calculateSevenNumbers(birthday) {
   const [yStr, mStr, dStr] = birthday.split("-");
-  const y = Number(yStr);
   const m = Number(mStr);
   const d = Number(dStr);
 
@@ -131,11 +135,11 @@ async function dbGetByUid(db, { sheetName, uid }) {
   );
 }
 
-async function tryAppendEvent(db, { source, action, payload }) {
+async function tryAppendEvent(db, { source, action, payload, sheetName = EVENTS_SHEET }) {
   try {
     if (!db?.appendEvent) return;
     const ts = new Date().toISOString();
-    await db.appendEvent({ ts, source, action, payload });
+    await db.appendEvent({ ts, source, action, payload, sheetName });
   } catch (_) {
     // ignore event logging errors (observability must not break main flow)
   }
@@ -147,12 +151,24 @@ function createQuizRouter({ db }) {
 
   // POST /quiz/calc
   router.post("/calc", requireApiKey, async (req, res) => {
+    const meta = getRequestMeta(req);
+
     try {
       const { uid, birthday } = req.body || {};
       if (!uid || typeof uid !== "string") {
+        await tryAppendEvent(db, {
+          source: "api",
+          action: "quiz_calc_fail",
+          payload: { reason: "uid_required", uid, birthday, ...meta },
+        });
         return res.status(400).json({ ok: false, error: "uid_required" });
       }
       if (!isValidBirthday(birthday)) {
+        await tryAppendEvent(db, {
+          source: "api",
+          action: "quiz_calc_fail",
+          payload: { reason: "birthday_invalid", uid, birthday, ...meta },
+        });
         return res.status(400).json({ ok: false, error: "birthday_invalid" });
       }
 
@@ -166,62 +182,92 @@ function createQuizRouter({ db }) {
       const unionRow = { UID: uid };
       for (let i = 1; i <= 12; i++) unionRow[`聯合碼${i}`] = union12[i - 1];
 
-      await dbUpsertByUid(db, {
-        sheetName: SHEET_CALC,
-        uid,
-        valuesByHeader: calcRow,
-      });
-      await dbUpsertByUid(db, {
-        sheetName: SHEET_UNION,
-        uid,
-        valuesByHeader: unionRow,
-      });
+      await dbUpsertByUid(db, { sheetName: SHEET_CALC, uid, valuesByHeader: calcRow });
+      await dbUpsertByUid(db, { sheetName: SHEET_UNION, uid, valuesByHeader: unionRow });
 
       await tryAppendEvent(db, {
         source: "api",
-        action: "quiz_calc",
-        payload: { uid, birthday },
+        action: "quiz_calc_ok",
+        payload: { uid, birthday, ...meta },
       });
 
-      return res.json({
-        ok: true,
-        uid,
-        birthday,
-        sixteen,
-        union12,
-      });
+      return res.json({ ok: true, uid, birthday, sixteen, union12 });
     } catch (err) {
       console.error("POST /quiz/calc failed:", err);
-      return res.status(500).json({ 
-        ok: false, 
+
+      await tryAppendEvent(db, {
+        source: "api",
+        action: "quiz_calc_fail",
+        payload: {
+          reason: "internal_error",
+          uid: req?.body?.uid,
+          birthday: req?.body?.birthday,
+          message: safeStr(err?.message || String(err), 1000),
+          ...meta,
+        },
+      });
+
+      return res.status(500).json({
+        ok: false,
         error: "internal_error",
         message: err?.message || String(err),
-     });
+      });
     }
   });
 
   // GET /quiz/:uid
   router.get("/:uid", requireApiKey, async (req, res) => {
+    const meta = getRequestMeta(req);
+
     try {
       const { uid } = req.params;
-      if (!uid) return res.status(400).json({ ok: false, error: "uid_required" });
+      if (!uid) {
+        await tryAppendEvent(db, {
+          source: "api",
+          action: "quiz_get_fail",
+          payload: { reason: "uid_required", uid, ...meta },
+        });
+        return res.status(400).json({ ok: false, error: "uid_required" });
+      }
 
       const calc = await dbGetByUid(db, { sheetName: SHEET_CALC, uid });
       const union = await dbGetByUid(db, { sheetName: SHEET_UNION, uid });
 
       if (!calc && !union) {
+        await tryAppendEvent(db, {
+          source: "api",
+          action: "quiz_get_fail",
+          payload: { reason: "not_found", uid, ...meta },
+        });
         return res.status(404).json({ ok: false, error: "not_found" });
       }
 
-      return res.json({
-        ok: true,
-        uid,
-        calc: calc || null,
-        union: union || null,
+      await tryAppendEvent(db, {
+        source: "api",
+        action: "quiz_get_ok",
+        payload: { uid, ...meta },
       });
+
+      return res.json({ ok: true, uid, calc: calc || null, union: union || null });
     } catch (err) {
       console.error("GET /quiz/:uid failed:", err);
-      return res.status(500).json({ ok: false, error: "internal_error" });
+
+      await tryAppendEvent(db, {
+        source: "api",
+        action: "quiz_get_fail",
+        payload: {
+          reason: "internal_error",
+          uid: req?.params?.uid,
+          message: safeStr(err?.message || String(err), 1000),
+          ...meta,
+        },
+      });
+
+      return res.status(500).json({
+        ok: false,
+        error: "internal_error",
+        message: err?.message || String(err),
+      });
     }
   });
 
