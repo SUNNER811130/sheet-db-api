@@ -8,12 +8,10 @@ const { createQuizRouter } = require("./routes/quiz");
 function createApp({ db }) {
   const app = express();
 
-  app.use(express.json({ limit: "1mb" }));
+  // ⚠️ 不在這裡用 express.json()（改到 server.js 統一處理 rawBody + json parser）
 
-  // Public
   app.get("/health", (req, res) => res.json({ ok: true }));
 
-  // Protected routes (each router can enforce its own middleware)
   app.use("/members", createMembersRouter({ db }));
   app.use("/line", createLineRouter({ db }));
   app.use("/quiz", createQuizRouter({ db }));
