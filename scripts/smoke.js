@@ -12,7 +12,7 @@ const NETWORK_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "
 
 function parseArgs(argv) {
   const args = {
-    base: DEFAULT_BASE,
+    base: String(process.env.RUN_URL || DEFAULT_BASE).trim() || DEFAULT_BASE,
     uid: DEFAULT_UID,
     apiKey: "",
     autoStart: true,
@@ -93,6 +93,11 @@ function buildIpv4BaseIfLocalhost(baseUrl) {
 
 function toBaseString(url) {
   return url.toString().replace(/\/$/, "");
+}
+
+function isCloudBaseUrl(url) {
+  if (url.protocol === "https:") return true;
+  return !["localhost", "127.0.0.1"].includes(url.hostname);
 }
 
 async function callJson({ method, url, headers, body, requestTimeoutMs = 10_000 }) {
@@ -258,6 +263,8 @@ async function main() {
   if (apiKey) headers["x-api-key"] = apiKey;
 
   const baseUrl = parseBaseUrl(base);
+  const forcedCloudMode = isCloudBaseUrl(baseUrl);
+  const shouldAutoStart = forcedCloudMode ? false : autoStart;
   const fallbackIpv4Url = buildIpv4BaseIfLocalhost(baseUrl);
   const port = getPortOrDefault(baseUrl);
 
@@ -271,6 +278,11 @@ async function main() {
 
   console.log(`[smoke] base=${primaryBase}`);
   console.log(`[smoke] uid=${uid}`);
+  if (forcedCloudMode) {
+    console.log("[smoke] mode=cloud (auto-start disabled)");
+  } else {
+    console.log(`[smoke] mode=local (auto-start=${shouldAutoStart ? "on" : "off"})`);
+  }
   console.log("[0/4] resolve base + health check");
 
   try {
@@ -287,7 +299,7 @@ async function main() {
         console.log(`  health up on ${fallbackBase}`);
       } else if (fallbackHealth.kind === "wrong-service") {
         throw new Error(buildWrongServiceHelp({ base: fallbackBase }));
-      } else if (fallbackHealth.kind === "unreachable" && autoStart) {
+      } else if (fallbackHealth.kind === "unreachable" && shouldAutoStart) {
         console.log(`  starting dev server on port ${port} (health failed: ${fallbackHealth.reason})`);
         spawnedDevServer = startDevServer({ port });
         assertChildIsAlive(spawnedDevServer);
@@ -299,7 +311,7 @@ async function main() {
           `GET /health failed for ${primaryBase} and ${fallbackBase} (${fallbackHealth.reason})`
         );
       }
-    } else if (primaryHealth.kind === "unreachable" && autoStart) {
+    } else if (primaryHealth.kind === "unreachable" && shouldAutoStart) {
       console.log(`  health unreachable (${primaryHealth.reason}), starting dev server on port ${port}`);
       spawnedDevServer = startDevServer({ port });
       assertChildIsAlive(spawnedDevServer);
