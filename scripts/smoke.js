@@ -12,7 +12,8 @@ const NETWORK_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "
 
 function parseArgs(argv) {
   const args = {
-    base: String(process.env.RUN_URL || DEFAULT_BASE).trim() || DEFAULT_BASE,
+    base: "",
+    baseFromArg: false,
     uid: DEFAULT_UID,
     apiKey: "",
     autoStart: true,
@@ -25,6 +26,7 @@ function parseArgs(argv) {
 
     if (token === "--base" && value) {
       args.base = value;
+      args.baseFromArg = true;
       i += 1;
       continue;
     }
@@ -97,7 +99,9 @@ function toBaseString(url) {
 
 function isCloudBaseUrl(url) {
   if (url.protocol === "https:") return true;
-  return !["localhost", "127.0.0.1"].includes(url.hostname);
+  const host = String(url.hostname || "").toLowerCase();
+  const isLocalIpv4 = host === "127.0.0.1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  return host !== "localhost" && !isLocalIpv4;
 }
 
 async function callJson({ method, url, headers, body, requestTimeoutMs = 10_000 }) {
@@ -257,12 +261,18 @@ function assertChildIsAlive(child) {
 }
 
 async function main() {
-  const { base, uid, apiKey: cliApiKey, autoStart, timeoutMs } = parseArgs(process.argv.slice(2));
+  const { base, baseFromArg, uid, apiKey: cliApiKey, autoStart, timeoutMs } = parseArgs(process.argv.slice(2));
   const apiKey = String(cliApiKey || process.env.API_KEY || "").trim();
   const headers = { "content-type": "application/json" };
   if (apiKey) headers["x-api-key"] = apiKey;
 
-  const baseUrl = parseBaseUrl(base);
+  const envRunUrl = String(process.env.RUN_URL || "").trim();
+  const resolvedBase = baseFromArg ? String(base).trim() : envRunUrl || (autoStart ? DEFAULT_BASE : "");
+  if (!resolvedBase) {
+    throw new Error("Missing target base URL. Provide --base <RUN_URL> or set RUN_URL.");
+  }
+
+  const baseUrl = parseBaseUrl(resolvedBase);
   const forcedCloudMode = isCloudBaseUrl(baseUrl);
   const shouldAutoStart = forcedCloudMode ? false : autoStart;
   const fallbackIpv4Url = buildIpv4BaseIfLocalhost(baseUrl);

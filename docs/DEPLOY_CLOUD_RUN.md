@@ -163,18 +163,39 @@ Set URL and run smoke without auto-start:
 
 ### PowerShell
 
+Method 1 (via `RUN_URL`):
+
 ```powershell
 $env:RUN_URL = "<RUN_URL>"
 npm run smoke:cloud
+```
+
+Method 2 (pass base directly):
+
+```powershell
+npm run smoke:cloud -- --base "<RUN_URL>"
+```
+
+Optional helper:
+
+```powershell
 # or
 .\scripts\smoke-cloud.ps1 -RunUrl "<RUN_URL>"
 ```
 
 ### Cloud Shell (bash)
 
+Method 1 (via `RUN_URL`):
+
 ```bash
 export RUN_URL="<RUN_URL>"
 npm run smoke:cloud
+```
+
+Method 2 (pass base directly):
+
+```bash
+npm run smoke:cloud -- --base "<RUN_URL>"
 ```
 
 Expected:
