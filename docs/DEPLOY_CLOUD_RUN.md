@@ -47,6 +47,20 @@ Merge PR on GitHub after checks pass.
 
 ## 2) Env Key Allowlist (keys only, no values)
 
+One-click print from `.env.example`:
+
+PowerShell:
+
+```powershell
+.\scripts\print-env-keys.ps1
+```
+
+Cloud Shell (bash):
+
+```bash
+./scripts/print-env-keys.sh
+```
+
 Set only required keys on Cloud Run:
 
 - `SPREADSHEET_ID`
@@ -67,6 +81,10 @@ Set only required keys on Cloud Run:
 Do not set:
 
 - `GOOGLE_APPLICATION_CREDENTIALS` (Cloud Run must use service identity)
+
+Reminder:
+- Cloud Run must use attached user-managed service account identity.
+- Do not configure `GOOGLE_APPLICATION_CREDENTIALS` on Cloud Run runtime env.
 
 If secrets are managed centrally, use Secret Manager + Cloud Run `--set-secrets` / Console Secrets mounting instead of plain env value copy.
 
