@@ -1,0 +1,12 @@
+.gcloudignore
+.git
+.gitignore
+#!include:.gitignore
+
+# Extra sensitive patterns for source upload.
+*.key
+*credentials*
+
+# Required Node manifests for buildpack detection.
+!package.json
+!package-lock.json
