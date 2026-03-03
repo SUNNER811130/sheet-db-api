@@ -164,6 +164,7 @@ Expected:
 - `POST /members/upsert` ok
 - `GET /members/:uid` ok
 - `POST /quiz/calc` ok (or skip if route unavailable)
+- `GET /debug/sheets/validate` ok when `API_KEY` is configured (or skip on `404` for older revision compatibility)
 
 Quick manual check:
 
@@ -172,6 +173,13 @@ curl -sS "<RUN_URL>/health"
 ```
 
 Should return `{"ok":true,...}`.
+
+Debug schema/manual checks:
+
+```bash
+curl -sS "<RUN_URL>/debug/sheets/validate" -H "x-api-key: <API_KEY>"
+curl -sS -X POST "<RUN_URL>/debug/sheets/ensure-events" -H "x-api-key: <API_KEY>"
+```
 
 ## 6) LINE Webhook Switch Checklist
 
@@ -191,7 +199,8 @@ LINE Developers Console:
 
 1. `curl <RUN_URL>/health` returns `ok: true`.
 2. `npm run smoke:cloud` passes all required steps.
-3. Send LINE message (e.g. `menu`, birthday input `YYYY-MM-DD`) and confirm:
+3. With `API_KEY` configured, smoke auto-validates `GET /debug/sheets/validate`; if debug route is absent on old revision, step is `SKIP` on `404`.
+4. Send LINE message (e.g. `menu`, birthday input `YYYY-MM-DD`) and confirm:
    - webhook receives event
    - member data updates in sheet
    - expected reply behavior matches `LINE_REPLY_MODE`

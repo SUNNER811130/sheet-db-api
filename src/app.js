@@ -4,6 +4,7 @@ const express = require("express");
 const { createMembersRouter } = require("./routes/members");
 const { createLineRouter } = require("./routes/line");
 const { createQuizRouter } = require("./routes/quiz");
+const { createDebugRouter } = require("./routes/debug");
 
 function createApp({ db }) {
   const app = express();
@@ -40,6 +41,7 @@ function createApp({ db }) {
   app.use("/members", createMembersRouter({ db }));
   app.use("/line", createLineRouter({ db }));
   app.use("/quiz", createQuizRouter({ db }));
+  app.use("/debug", createDebugRouter({ db }));
 
   function isJsonParseError(err) {
     if (!err) return false;

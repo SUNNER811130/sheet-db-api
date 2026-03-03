@@ -30,6 +30,7 @@ Smoke flow:
 - `POST /members/upsert`
 - `GET /members/:uid`
 - `POST /quiz/calc` (optional; `404` = skip)
+- `GET /debug/sheets/validate` (only when API key exists; `404` = skip for backward compatibility)
 
 ## Manual mode (no auto-start)
 
@@ -55,6 +56,17 @@ node scripts/smoke.js --timeoutMs 30000
 Notes:
 - `--apiKey` overrides `.env` `API_KEY`
 - Script never prints the API key
+- When `API_KEY` is present, smoke automatically validates `GET /debug/sheets/validate`
+- If debug routes are missing on older revisions, smoke prints `SKIP` on `404`
+
+## Debug Schema Acceptance (manual)
+
+Local:
+
+```powershell
+curl -sS http://localhost:3000/debug/sheets/validate -H "x-api-key: <API_KEY>"
+curl -sS -X POST http://localhost:3000/debug/sheets/ensure-events -H "x-api-key: <API_KEY>"
+```
 
 ## Secrets Safety
 

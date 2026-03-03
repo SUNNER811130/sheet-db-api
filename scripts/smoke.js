@@ -283,7 +283,7 @@ async function main() {
   } else {
     console.log(`[smoke] mode=local (auto-start=${shouldAutoStart ? "on" : "off"})`);
   }
-  console.log("[0/4] resolve base + health check");
+  console.log("[0/5] resolve base + health check");
 
   try {
     const primaryHealth = await checkHealth({ base: primaryBase, headers });
@@ -323,14 +323,14 @@ async function main() {
 
     const activeBase = toBaseString(activeBaseUrl);
 
-    console.log("[1/4] GET /health");
+    console.log("[1/5] GET /health");
     const health = await callJson({ method: "GET", url: `${activeBase}/health`, headers });
     if (!health.ok || !health.data || health.data.ok !== true) {
       throw new Error(`GET /health failed (${health.status}): ${summarizeBody(health.data, health.text)}`);
     }
     console.log("  OK");
 
-    console.log("[2/4] POST /members/upsert");
+    console.log("[2/5] POST /members/upsert");
     const upsert = await callJson({
       method: "POST",
       url: `${activeBase}/members/upsert`,
@@ -344,7 +344,7 @@ async function main() {
     }
     console.log("  OK");
 
-    console.log("[3/4] GET /members/:uid");
+    console.log("[3/5] GET /members/:uid");
     const member = await callJson({
       method: "GET",
       url: `${activeBase}/members/${encodeURIComponent(uid)}`,
@@ -357,7 +357,7 @@ async function main() {
     }
     console.log("  OK");
 
-    console.log("[4/4] POST /quiz/calc (optional)");
+    console.log("[4/5] POST /quiz/calc (optional)");
     const quiz = await callJson({
       method: "POST",
       url: `${activeBase}/quiz/calc`,
@@ -370,6 +370,26 @@ async function main() {
       throw new Error(`POST /quiz/calc failed (${quiz.status}): ${summarizeBody(quiz.data, quiz.text)}`);
     } else {
       console.log("  OK");
+    }
+
+    console.log("[5/5] GET /debug/sheets/validate (api key required)");
+    if (!apiKey) {
+      console.log("  SKIP (API_KEY not provided)");
+    } else {
+      const schema = await callJson({
+        method: "GET",
+        url: `${activeBase}/debug/sheets/validate`,
+        headers,
+      });
+      if (schema.status === 404) {
+        console.log("  SKIP (route not found)");
+      } else if (schema.status === 200 && schema.data && schema.data.ok === true) {
+        console.log("  OK");
+      } else {
+        throw new Error(
+          `GET /debug/sheets/validate failed (${schema.status}): ${summarizeBody(schema.data, schema.text)}`
+        );
+      }
     }
 
     console.log("[smoke] completed");

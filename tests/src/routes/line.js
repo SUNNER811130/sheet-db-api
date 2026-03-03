@@ -18,7 +18,7 @@ const SHEET_ICE_HEART = process.env.SHEET_ICE_HEART || "破冰與交心內容表
 const SHEET_FLOW = process.env.SHEET_FLOW || "流年內容表單";
 const SHEET_WUXING = process.env.SHEET_WUXING || "五行內容表單";
 const SHEET_EMOTION = process.env.SHEET_EMOTION || "情緒內容表單";
-const SHEET_LUCK20 = process.env.SHEET_LUCK20 || "20年大運表";
+const SHEET_LUCK20 = process.env.SHEET_LUCK20 || "20年大運表單";
 
 // -------------------- helpers --------------------
 function safeEqual(a, b) {
