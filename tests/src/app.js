@@ -41,29 +41,6 @@ function createApp({ db }) {
   app.use("/line", createLineRouter({ db }));
   app.use("/quiz", createQuizRouter({ db }));
 
-  function isJsonParseError(err) {
-    if (!err) return false;
-    if (err.type === "entity.parse.failed") return true;
-    if (!(err instanceof SyntaxError)) return false;
-    const hasBody = Object.prototype.hasOwnProperty.call(err, "body");
-    const isJsonRelated = /json/i.test(String(err.message || ""));
-    return hasBody || isJsonRelated;
-  }
-
-  app.use((err, req, res, next) => {
-    if (isJsonParseError(err)) {
-      return res.status(400).json({
-        ok: false,
-        error: "invalid_json",
-        hint: "Request body must be valid JSON. In PowerShell prefer Invoke-RestMethod or run: npm run smoke",
-      });
-    }
-
-    if (res.headersSent) return next(err);
-    console.error("[app] unhandled error:", err);
-    return res.status(500).json({ ok: false, error: "internal_error" });
-  });
-
   return app;
 }
 

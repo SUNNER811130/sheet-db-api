@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "smoke": "node scripts/smoke.js",
+    "smoke:cloud": "node scripts/smoke.js --no-auto-start",
+    "smoke:manual": "node scripts/smoke.js --no-auto-start",
+    "smoke:ipv4": "node scripts/smoke.js --base http://127.0.0.1:3000",
     "test": "jest",
     "test:watch": "jest --watch"
   },
