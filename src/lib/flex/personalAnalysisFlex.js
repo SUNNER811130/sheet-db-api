@@ -1,3 +1,9 @@
+const {
+  AI_TECH_THEME,
+  makeButtonPrimary,
+  makeButtonSecondary,
+} = require("./theme.aiTech");
+
 function createPersonalAnalysisFlex({
   userId,
   displayName,
@@ -24,10 +30,19 @@ function createPersonalAnalysisFlex({
 
   const card = ({ title, emoji, desc, tag }) => ({
     type: "bubble",
+    styles: {
+      body: { backgroundColor: AI_TECH_THEME.SURFACE },
+      footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+    },
     body: {
       type: "box",
       layout: "vertical",
       spacing: "sm",
+      paddingAll: "16px",
+      backgroundColor: AI_TECH_THEME.SURFACE,
+      borderColor: AI_TECH_THEME.BORDER,
+      borderWidth: "1px",
+      cornerRadius: "16px",
       contents: [
         {
           type: "text",
@@ -35,13 +50,14 @@ function createPersonalAnalysisFlex({
           weight: "bold",
           size: "xl",
           wrap: true,
+          color: AI_TECH_THEME.TEXT,
         },
         {
           type: "text",
           text: String(desc || ""),
           size: "sm",
           wrap: true,
-          color: "#666666",
+          color: AI_TECH_THEME.MUTED,
         },
       ],
     },
@@ -49,12 +65,10 @@ function createPersonalAnalysisFlex({
       type: "box",
       layout: "vertical",
       spacing: "sm",
+      backgroundColor: AI_TECH_THEME.SURFACE_2,
+      separator: true,
       contents: [
-        {
-          type: "button",
-          style: "primary",
-          action: postback(tag),
-        },
+        makeButtonPrimary(postback(tag)),
       ],
     },
   });
@@ -67,36 +81,39 @@ function createPersonalAnalysisFlex({
       contents: [
         {
           type: "bubble",
+          styles: {
+            body: { backgroundColor: AI_TECH_THEME.SURFACE },
+            footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+          },
           body: {
             type: "box",
             layout: "vertical",
             spacing: "sm",
+            paddingAll: "16px",
+            backgroundColor: AI_TECH_THEME.SURFACE,
+            borderColor: AI_TECH_THEME.BORDER,
+            borderWidth: "1px",
+            cornerRadius: "16px",
             contents: [
-              { type: "text", text: "解析完成", weight: "bold", size: "xl" },
-              { type: "text", text: `姓名：${name}`, size: "sm", wrap: true },
-              { type: "text", text: `生日：${birthday}`, size: "sm" },
-              { type: "separator" },
-              { type: "text", text: `主性格：${n7} 號`, size: "sm" },
-              { type: "text", text: `破冰：${n1} 號`, size: "sm" },
-              { type: "text", text: `交心：${n4} 號`, size: "sm" },
-              { type: "text", text: `流年：${flow} 號`, size: "sm" },
+              { type: "text", text: "解析完成", weight: "bold", size: "xl", color: AI_TECH_THEME.TEXT },
+              { type: "text", text: `姓名：${name}`, size: "sm", wrap: true, color: AI_TECH_THEME.MUTED },
+              { type: "text", text: `生日：${birthday}`, size: "sm", color: AI_TECH_THEME.MUTED },
+              { type: "separator", color: AI_TECH_THEME.ACCENT },
+              { type: "text", text: `主性格：${n7} 號`, size: "sm", color: AI_TECH_THEME.MUTED },
+              { type: "text", text: `破冰：${n1} 號`, size: "sm", color: AI_TECH_THEME.MUTED },
+              { type: "text", text: `交心：${n4} 號`, size: "sm", color: AI_TECH_THEME.MUTED },
+              { type: "text", text: `流年：${flow} 號`, size: "sm", color: AI_TECH_THEME.MUTED },
             ],
           },
           footer: {
             type: "box",
             layout: "vertical",
             spacing: "sm",
+            backgroundColor: AI_TECH_THEME.SURFACE_2,
+            separator: true,
             contents: [
-              {
-                type: "button",
-                style: "secondary",
-                action: { type: "message", label: "再測一次", text: retestMessage },
-              },
-              {
-                type: "button",
-                style: "secondary",
-                action: { type: "message", label: "任務選單", text: "menu" },
-              },
+              makeButtonSecondary({ type: "message", label: "再測一次", text: retestMessage }),
+              makeButtonSecondary({ type: "message", label: "任務選單", text: "menu" }),
             ],
           },
         },

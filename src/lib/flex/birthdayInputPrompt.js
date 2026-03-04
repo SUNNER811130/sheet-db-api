@@ -1,3 +1,9 @@
+const {
+  AI_TECH_THEME,
+  makeButtonPrimary,
+  makeButtonSecondary,
+} = require("./theme.aiTech");
+
 function todayISO() {
   const d = new Date();
   const y = d.getFullYear();
@@ -13,31 +19,84 @@ function createBirthdayInputPrompt({
   min = "1920-01-01",
   max = todayISO(),
 } = {}) {
-  const softWait = "資料量較大，載入約 2–3 秒";
-  const text = `${header}\n${softWait}\n（可手動輸入或快速選單）`;
+  const altText = String(`${header}：可手動輸入或使用快速選單`).slice(0, 400);
 
   return {
-    type: "template",
-    altText: header,
-    template: {
-      type: "buttons",
-      text: String(text || "").slice(0, 160),
-      actions: [
-        {
-          type: "datetimepicker",
-          label: "快速選單",
-          data: "action=birthday_quick",
-          mode: "date",
-          initial,
-          min,
-          max,
-        },
-        {
-          type: "message",
-          label: "手動輸入生日",
-          text: manualMsg,
-        },
-      ],
+    type: "flex",
+    altText,
+    contents: {
+      type: "bubble",
+      styles: {
+        body: { backgroundColor: AI_TECH_THEME.SURFACE },
+        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        paddingAll: "16px",
+        backgroundColor: AI_TECH_THEME.SURFACE,
+        borderColor: AI_TECH_THEME.BORDER,
+        borderWidth: "1px",
+        cornerRadius: "16px",
+        contents: [
+          {
+            type: "text",
+            text: String(header || "請輸入生日"),
+            weight: "bold",
+            size: "xl",
+            align: "center",
+            color: AI_TECH_THEME.TEXT,
+            wrap: true,
+          },
+          { type: "separator", color: AI_TECH_THEME.ACCENT },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            paddingAll: "12px",
+            backgroundColor: AI_TECH_THEME.SURFACE_2,
+            borderColor: AI_TECH_THEME.ACCENT,
+            borderWidth: "1px",
+            cornerRadius: "12px",
+            contents: [
+              { type: "text", text: "重要提醒", weight: "bold", color: AI_TECH_THEME.ACCENT, size: "sm" },
+              { type: "text", text: "資料庫龐大", color: AI_TECH_THEME.TEXT, size: "sm" },
+              { type: "text", text: "點按後請稍等幾秒", color: AI_TECH_THEME.TEXT, size: "sm" },
+            ],
+          },
+          {
+            type: "text",
+            text: "（可手動輸入或使用快速選單）",
+            size: "xs",
+            wrap: true,
+            color: AI_TECH_THEME.MUTED,
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        backgroundColor: AI_TECH_THEME.SURFACE_2,
+        separator: true,
+        contents: [
+          makeButtonPrimary({
+            type: "datetimepicker",
+            label: "快速選單",
+            data: "action=birthday_quick",
+            mode: "date",
+            initial,
+            min,
+            max,
+          }),
+          makeButtonSecondary({
+            type: "message",
+            label: "手動輸入生日",
+            text: manualMsg,
+          }),
+        ],
+      },
     },
   };
 }

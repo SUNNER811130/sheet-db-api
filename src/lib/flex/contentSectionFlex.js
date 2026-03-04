@@ -1,3 +1,5 @@
+const { AI_TECH_THEME, makeButtonSecondary } = require("./theme.aiTech");
+
 function splitByParagraph(text, maxLen) {
   const raw = String(text || "");
   if (raw.length <= maxLen) return [raw];
@@ -40,6 +42,7 @@ function buildSection({ heading, text }) {
       weight: "bold",
       size: "sm",
       wrap: true,
+      color: AI_TECH_THEME.ACCENT,
     });
   }
 
@@ -50,6 +53,7 @@ function buildSection({ heading, text }) {
       text: String(c || ""),
       size: "sm",
       wrap: true,
+      color: AI_TECH_THEME.MUTED,
     });
   }
 
@@ -68,7 +72,14 @@ function createSectionFlex({
   backToMenuText = "menu",
 } = {}) {
   const bodyContents = [
-    { type: "text", text: String(title || ""), weight: "bold", size: "xl", wrap: true },
+    {
+      type: "text",
+      text: String(title || ""),
+      weight: "bold",
+      size: "xl",
+      wrap: true,
+      color: AI_TECH_THEME.TEXT,
+    },
   ];
   if (subtitle) {
     bodyContents.push({
@@ -76,16 +87,16 @@ function createSectionFlex({
       text: String(subtitle),
       size: "sm",
       wrap: true,
-      color: "#666666",
+      color: AI_TECH_THEME.MUTED,
     });
   }
-  bodyContents.push({ type: "separator" });
+  bodyContents.push({ type: "separator", color: AI_TECH_THEME.ACCENT });
 
   const secList = Array.isArray(sections) ? sections : [];
   for (let i = 0; i < secList.length; i++) {
     const s = secList[i] || {};
     bodyContents.push(buildSection({ heading: s.heading, text: s.text }));
-    if (i !== secList.length - 1) bodyContents.push({ type: "separator" });
+    if (i !== secList.length - 1) bodyContents.push({ type: "separator", color: AI_TECH_THEME.ACCENT });
   }
 
   const flex = {
@@ -93,22 +104,29 @@ function createSectionFlex({
     altText: String(title || "內容"),
     contents: {
       type: "bubble",
+      styles: {
+        body: { backgroundColor: AI_TECH_THEME.SURFACE },
+        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+      },
       body: {
         type: "box",
         layout: "vertical",
         spacing: "md",
+        paddingAll: "16px",
+        backgroundColor: AI_TECH_THEME.SURFACE,
+        borderColor: AI_TECH_THEME.BORDER,
+        borderWidth: "1px",
+        cornerRadius: "16px",
         contents: bodyContents,
       },
       footer: {
         type: "box",
         layout: "vertical",
         spacing: "sm",
+        backgroundColor: AI_TECH_THEME.SURFACE_2,
+        separator: true,
         contents: [
-          {
-            type: "button",
-            style: "secondary",
-            action: { type: "message", label: "回到選單", text: backToMenuText },
-          },
+          makeButtonSecondary({ type: "message", label: "回到選單", text: backToMenuText }),
         ],
       },
     },
