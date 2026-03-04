@@ -86,8 +86,21 @@ async function replyLine({ token, replyToken, text, messages }) {
   );
 
   if (!r?.ok) {
+    let responseBody = "";
+    try {
+      const contentType = String(r?.headers?.get?.("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        const j = await r.json();
+        responseBody = JSON.stringify(j);
+      } else {
+        responseBody = await r.text();
+      }
+    } catch (_) {
+      responseBody = "";
+    }
     const e = new Error("reply_api_non_2xx");
     e.status = r?.status || 0;
+    e.body = safeStr(responseBody || "", 800);
     throw e;
   }
 }
@@ -356,6 +369,7 @@ async function handleLineReply({
       payload: {
         reason: safeStr(err?.message || "reply_failed", 200),
         status: Number(err?.status || 0),
+        errBody: safeStr(err?.body || "", 800),
         eventType,
         ...payload,
       },
