@@ -299,9 +299,11 @@ async function buildPersonalModuleMessages({ db, userId, tab }) {
     const code9 = union12[8];
     const code12 = union12[11];
 
-    const row6 = await getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code6 });
-    const row9 = await getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code9 });
-    const row12 = await getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code12 });
+    const [row6, row9, row12] = await Promise.all([
+      getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code6 }),
+      getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code9 }),
+      getRowByKey(db, { sheetName: SHEET_LUCK20, keyHeader: "數字", key: code12 }),
+    ]);
     if (!row6 || !row9 || !row12) {
       return [{ type: "text", text: "查無 20 年大運內容（請確認表單資料）" }];
     }
@@ -424,7 +426,9 @@ function createLineRouter({ db }) {
         });
 
         let displayName = "";
-        if (accessToken) {
+        const shouldFetchProfile =
+          Boolean(accessToken) && (type === "follow" || (type === "message" && ev?.message?.type === "text"));
+        if (shouldFetchProfile) {
           const prof = await getLineProfile({ token: accessToken, userId });
           displayName = prof.displayName || "";
           if (prof.ok === false) {
@@ -440,7 +444,7 @@ function createLineRouter({ db }) {
           }
         }
 
-        const upsertPayload = { uid: userId, display_name: displayName };
+        const upsertPayload = { uid: userId, ...(displayName ? { display_name: displayName } : {}) };
 
         if (type === "follow") {
           await handleLineReply({

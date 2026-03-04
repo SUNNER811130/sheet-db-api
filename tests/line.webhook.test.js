@@ -136,7 +136,7 @@ describe("LINE webhook", () => {
     expect(global.fetch.mock.calls[0][0]).toContain("/v2/bot/profile/U_VALID_1");
   });
 
-  test("profile fetch failure (throw or ok:false) should not crash, writes line_event_error, and still upserts member with empty display_name", async () => {
+  test("profile fetch failure (throw or ok:false) should not crash, writes line_event_error, and still upserts member", async () => {
     process.env.LINE_CHANNEL_ACCESS_TOKEN = "test-access-token";
 
     const cases = [
@@ -204,7 +204,6 @@ describe("LINE webhook", () => {
       expect(db.upsertMember).toHaveBeenCalledTimes(1);
       expect(db.upsertMember).toHaveBeenCalledWith({
         uid: "U_PROFILE_FAIL",
-        display_name: "",
       });
     }
   });
@@ -246,11 +245,9 @@ describe("LINE webhook", () => {
     expect(db.upsertMember).toHaveBeenCalledTimes(2);
     expect(db.upsertMember).toHaveBeenNthCalledWith(1, {
       uid: "U_MULTI_1",
-      display_name: "",
     });
     expect(db.upsertMember).toHaveBeenNthCalledWith(2, {
       uid: "U_MULTI_2",
-      display_name: "",
     });
     expect(global.fetch).not.toHaveBeenCalled();
   });

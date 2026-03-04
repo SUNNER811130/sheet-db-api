@@ -1,4 +1,4 @@
-const { AI_TECH_THEME, makeButtonSecondary } = require("./theme.aiTech");
+﻿const { AI_PREMIUM_THEME, px, makeActionBoxButton } = require("./theme.aiPremium");
 
 function splitByParagraph(text, maxLen) {
   const raw = String(text || "");
@@ -23,7 +23,6 @@ function splitByParagraph(text, maxLen) {
       continue;
     }
 
-    // Hard split for extremely long paragraphs
     for (let i = 0; i < para.length; i += maxLen) {
       chunks.push(para.slice(i, i + maxLen));
     }
@@ -33,7 +32,7 @@ function splitByParagraph(text, maxLen) {
   return chunks.length ? chunks : [raw.slice(0, maxLen)];
 }
 
-function buildSection({ heading, text }) {
+function buildSection({ heading, text, bodyAlign = "start" }) {
   const blocks = [];
   if (heading) {
     blocks.push({
@@ -42,7 +41,8 @@ function buildSection({ heading, text }) {
       weight: "bold",
       size: "sm",
       wrap: true,
-      color: AI_TECH_THEME.ACCENT,
+      color: AI_PREMIUM_THEME.BORDER,
+      align: "center",
     });
   }
 
@@ -53,7 +53,8 @@ function buildSection({ heading, text }) {
       text: String(c || ""),
       size: "sm",
       wrap: true,
-      color: AI_TECH_THEME.MUTED,
+      color: AI_PREMIUM_THEME.MUTED,
+      align: bodyAlign,
     });
   }
 
@@ -65,12 +66,7 @@ function buildSection({ heading, text }) {
   };
 }
 
-function createSectionFlex({
-  title,
-  subtitle,
-  sections,
-  backToMenuText = "menu",
-} = {}) {
+function createSectionFlex({ title, subtitle, sections, backToMenuText = "menu", bodyAlign = "start" } = {}) {
   const bodyContents = [
     {
       type: "text",
@@ -78,7 +74,8 @@ function createSectionFlex({
       weight: "bold",
       size: "xl",
       wrap: true,
-      color: AI_TECH_THEME.TEXT,
+      color: AI_PREMIUM_THEME.TEXT,
+      align: "center",
     },
   ];
   if (subtitle) {
@@ -87,52 +84,60 @@ function createSectionFlex({
       text: String(subtitle),
       size: "sm",
       wrap: true,
-      color: AI_TECH_THEME.MUTED,
+      color: AI_PREMIUM_THEME.MUTED,
+      align: "center",
     });
   }
-  bodyContents.push({ type: "separator", color: AI_TECH_THEME.ACCENT });
+  bodyContents.push({ type: "separator", color: AI_PREMIUM_THEME.ACCENT });
 
   const secList = Array.isArray(sections) ? sections : [];
-  for (let i = 0; i < secList.length; i++) {
+  for (let i = 0; i < secList.length; i += 1) {
     const s = secList[i] || {};
-    bodyContents.push(buildSection({ heading: s.heading, text: s.text }));
-    if (i !== secList.length - 1) bodyContents.push({ type: "separator", color: AI_TECH_THEME.ACCENT });
+    bodyContents.push(buildSection({ heading: s.heading, text: s.text, bodyAlign }));
+    if (i !== secList.length - 1) bodyContents.push({ type: "separator", color: AI_PREMIUM_THEME.ACCENT });
   }
 
   const flex = {
     type: "flex",
-    altText: String(title || "內容"),
+    altText: String(title || "內容解析"),
     contents: {
       type: "bubble",
+      size: "kilo",
       styles: {
-        body: { backgroundColor: AI_TECH_THEME.SURFACE },
-        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2 },
+        body: { backgroundColor: AI_PREMIUM_THEME.SURFACE },
+        footer: { backgroundColor: AI_PREMIUM_THEME.SURFACE_2 },
       },
       body: {
         type: "box",
         layout: "vertical",
         spacing: "md",
-        paddingAll: "16px",
-        backgroundColor: AI_TECH_THEME.SURFACE,
-        borderColor: AI_TECH_THEME.BORDER,
-        borderWidth: "1px",
-        cornerRadius: "16px",
+        paddingAll: px(16),
+        backgroundColor: AI_PREMIUM_THEME.SURFACE,
+        borderColor: AI_PREMIUM_THEME.BORDER,
+        borderWidth: px(1),
+        cornerRadius: px(16),
         contents: bodyContents,
       },
       footer: {
         type: "box",
         layout: "vertical",
         spacing: "sm",
-        backgroundColor: AI_TECH_THEME.SURFACE_2,
+        backgroundColor: AI_PREMIUM_THEME.SURFACE_2,
         contents: [
-          { type: "separator", color: AI_TECH_THEME.ACCENT },
-          makeButtonSecondary({ type: "message", label: "回到選單", text: backToMenuText }),
+          { type: "separator", color: AI_PREMIUM_THEME.ACCENT },
+          makeActionBoxButton({
+            label: "回到選單",
+            action: { type: "message", label: "回到選單", text: backToMenuText },
+          }),
+          makeActionBoxButton({
+            label: "再測一次",
+            action: { type: "message", label: "再測一次", text: "我要重新輸入生日" },
+          }),
         ],
       },
     },
   };
 
-  // If the flex payload is too large, fall back to plain text(s)
   const bytes = Buffer.byteLength(JSON.stringify(flex), "utf8");
   if (bytes <= 45000) return { ok: true, messages: [flex] };
 

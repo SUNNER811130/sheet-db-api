@@ -86,6 +86,26 @@ class SheetsDb {
     // { [sheetName]: { map, headerLen } }
     this._tableUidMapCache = {};
     this._tableUidMapAt = {};
+    this._rowCache = new Map();
+    this._rowCacheTtlMs = 5 * 60 * 1000;
+  }
+
+  _makeRowCacheKey({ sheetName, uidHeader, uid }) {
+    return `${sheetName}::${uidHeader}::${uid}`;
+  }
+
+  _shouldUseRowCache(sheetName) {
+    if (!sheetName) return false;
+    if (sheetName === this.memberRosterSheet) return false;
+    if (sheetName === this.membersTab) return false;
+    return true;
+  }
+
+  _clearRowCacheForSheet(sheetName) {
+    if (!sheetName) return;
+    for (const key of this._rowCache.keys()) {
+      if (key.startsWith(`${sheetName}::`)) this._rowCache.delete(key);
+    }
   }
 
   static fromEnv() {
@@ -255,17 +275,22 @@ class SheetsDb {
 
     const rosterSheet = this.memberRosterSheet || "會員清單";
     const sheets = await this.sheets();
-    const uidColRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${rosterSheet}!B2:B`,
-      majorDimension: "COLUMNS",
-    });
-    const uidCol = uidColRes.data.values?.[0] || [];
     let rowNum = null;
-    uidCol.forEach((v, i) => {
-      if (rowNum) return;
-      if (String(v || "").trim() === uid) rowNum = i + 2;
-    });
+    try {
+      const { map } = await this.getTableUidRowMap(rosterSheet, { uidHeader: "uid" });
+      rowNum = map[uid] || null;
+    } catch (_) {
+      const uidColRes = await sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${rosterSheet}!B2:B`,
+        majorDimension: "COLUMNS",
+      });
+      const uidCol = uidColRes.data.values?.[0] || [];
+      uidCol.forEach((v, i) => {
+        if (rowNum) return;
+        if (String(v || "").trim() === uid) rowNum = i + 2;
+      });
+    }
 
     let existingRow = [];
     if (rowNum) {
@@ -329,6 +354,7 @@ class SheetsDb {
     // Invalidate roster uid-map cache (roster reads use getByUid -> uid map)
     delete this._tableUidMapCache[rosterSheet];
     delete this._tableUidMapAt[rosterSheet];
+    this._clearRowCacheForSheet(rosterSheet);
 
     if (this.dualWriteMembers) {
       await this.upsertMemberLegacy(input);
@@ -451,6 +477,13 @@ class SheetsDb {
   async getByUid({ sheetName, uid, uidHeader = "UID" }) {
     const u = String(uid || "").trim();
     if (!u) return null;
+    const useRowCache = this._shouldUseRowCache(sheetName);
+    const cacheKey = this._makeRowCacheKey({ sheetName, uidHeader, uid: u });
+    if (useRowCache) {
+      const cached = this._rowCache.get(cacheKey);
+      if (cached && Date.now() - cached.at < this._rowCacheTtlMs) return cached.value;
+      if (cached) this._rowCache.delete(cacheKey);
+    }
 
     const { map, headerLen } = await this.getTableUidRowMap(sheetName, { uidHeader });
     const rowNum = map[u];
@@ -471,6 +504,7 @@ class SheetsDb {
     header.forEach((h, i) => {
       obj[String(h).trim()] = row[i] ?? "";
     });
+    if (useRowCache) this._rowCache.set(cacheKey, { at: Date.now(), value: obj });
     return obj;
   }
 
@@ -507,6 +541,7 @@ class SheetsDb {
 
       // invalidate uid map for that sheet
       delete this._tableUidMapCache[sheetName];
+      this._clearRowCacheForSheet(sheetName);
       return { ...merged, _op: "insert" };
     }
 
@@ -518,6 +553,7 @@ class SheetsDb {
     });
 
     delete this._tableUidMapCache[sheetName];
+    this._clearRowCacheForSheet(sheetName);
     return { ...merged, _op: "update" };
   }
 
