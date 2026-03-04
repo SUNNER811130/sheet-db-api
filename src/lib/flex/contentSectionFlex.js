@@ -106,7 +106,7 @@ function createSectionFlex({
       type: "bubble",
       styles: {
         body: { backgroundColor: AI_TECH_THEME.SURFACE },
-        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2 },
       },
       body: {
         type: "box",
@@ -124,8 +124,8 @@ function createSectionFlex({
         layout: "vertical",
         spacing: "sm",
         backgroundColor: AI_TECH_THEME.SURFACE_2,
-        separator: true,
         contents: [
+          { type: "separator", color: AI_TECH_THEME.ACCENT },
           makeButtonSecondary({ type: "message", label: "回到選單", text: backToMenuText }),
         ],
       },

@@ -32,7 +32,7 @@ function createPersonalAnalysisFlex({
     type: "bubble",
     styles: {
       body: { backgroundColor: AI_TECH_THEME.SURFACE },
-      footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+      footer: { backgroundColor: AI_TECH_THEME.SURFACE_2 },
     },
     body: {
       type: "box",
@@ -66,8 +66,8 @@ function createPersonalAnalysisFlex({
       layout: "vertical",
       spacing: "sm",
       backgroundColor: AI_TECH_THEME.SURFACE_2,
-      separator: true,
       contents: [
+        { type: "separator", color: AI_TECH_THEME.ACCENT },
         makeButtonPrimary(postback(tag)),
       ],
     },
@@ -83,7 +83,7 @@ function createPersonalAnalysisFlex({
           type: "bubble",
           styles: {
             body: { backgroundColor: AI_TECH_THEME.SURFACE },
-            footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+            footer: { backgroundColor: AI_TECH_THEME.SURFACE_2 },
           },
           body: {
             type: "box",
@@ -110,8 +110,8 @@ function createPersonalAnalysisFlex({
             layout: "vertical",
             spacing: "sm",
             backgroundColor: AI_TECH_THEME.SURFACE_2,
-            separator: true,
             contents: [
+              { type: "separator", color: AI_TECH_THEME.ACCENT },
               makeButtonSecondary({ type: "message", label: "再測一次", text: retestMessage }),
               makeButtonSecondary({ type: "message", label: "任務選單", text: "menu" }),
             ],

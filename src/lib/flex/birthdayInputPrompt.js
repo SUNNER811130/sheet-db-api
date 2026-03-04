@@ -28,7 +28,7 @@ function createBirthdayInputPrompt({
       type: "bubble",
       styles: {
         body: { backgroundColor: AI_TECH_THEME.SURFACE },
-        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2, separator: true },
+        footer: { backgroundColor: AI_TECH_THEME.SURFACE_2 },
       },
       body: {
         type: "box",
@@ -79,8 +79,8 @@ function createBirthdayInputPrompt({
         layout: "vertical",
         spacing: "sm",
         backgroundColor: AI_TECH_THEME.SURFACE_2,
-        separator: true,
         contents: [
+          { type: "separator", color: AI_TECH_THEME.ACCENT },
           makeButtonPrimary({
             type: "datetimepicker",
             label: "快速選單",
